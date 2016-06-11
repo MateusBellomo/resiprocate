@@ -5,7 +5,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -35,6 +35,8 @@ using namespace resip;
 using namespace std;
 
 #define RESIPROCATE_SUBSYSTEM ReconSubsystem::RECON
+
+static const QString c_fileWithContacts = QLatin1String("data.txt");
 
 tr::Connection::Connection(const QDBusConnection &dbusConnection, const QString &cmName, const QString &protocolName, const QVariantMap &parameters)
    : Tp::BaseConnection(dbusConnection, cmName, protocolName, parameters),
@@ -77,13 +79,13 @@ tr::Connection::Connection(const QDBusConnection &dbusConnection, const QString 
    mContactsInterface = Tp::BaseConnectionContactsInterface::create();
    mContactsInterface->setGetContactAttributesCallback(Tp::memFun(this, &Connection::getContactAttributes));
    mContactsInterface->setContactAttributeInterfaces(QStringList()
-                                                   << TP_QT_IFACE_CONNECTION
-                                                   << TP_QT_IFACE_CONNECTION_INTERFACE_CONTACT_LIST
-                                                   << TP_QT_IFACE_CONNECTION_INTERFACE_SIMPLE_PRESENCE
-                                                   //<< TP_QT_IFACE_CONNECTION_INTERFACE_ALIASING
-                                                   << TP_QT_IFACE_CONNECTION_INTERFACE_REQUESTS
-                                                   //<< TP_QT_IFACE_CONNECTION_INTERFACE_AVATARS
-               );
+						     << TP_QT_IFACE_CONNECTION
+						     << TP_QT_IFACE_CONNECTION_INTERFACE_CONTACT_LIST
+						     << TP_QT_IFACE_CONNECTION_INTERFACE_SIMPLE_PRESENCE
+						     << TP_QT_IFACE_CONNECTION_INTERFACE_ALIASING
+						     << TP_QT_IFACE_CONNECTION_INTERFACE_REQUESTS
+						     //<< TP_QT_IFACE_CONNECTION_INTERFACE_AVATARS
+      );
    plugInterface(Tp::AbstractConnectionInterfacePtr::dynamicCast(mContactsInterface));
 
    /* Connection.Interface.SimplePresence */
@@ -92,19 +94,25 @@ tr::Connection::Connection(const QDBusConnection &dbusConnection, const QString 
    mSimplePresenceInterface->setSetPresenceCallback(Tp::memFun(this, &Connection::setPresence));
    plugInterface(Tp::AbstractConnectionInterfacePtr::dynamicCast(mSimplePresenceInterface));
 
-    /* Connection.Interface.ContactList */
-    mContactListInterface = Tp::BaseConnectionContactListInterface::create();
-    mContactListInterface->setContactListPersists(true);
-    mContactListInterface->setCanChangeContactList(true);
-    mContactListInterface->setDownloadAtConnection(true);
-    //mContactListInterface->setGetContactListAttributesCallback(Tp::memFun(this, &Connection::getContactListAttributes));
-    //mContactListInterface->setRequestSubscriptionCallback(Tp::memFun(this, &Connection::requestSubscription));
-    //mContactListInterface->setAuthorizePublicationCallback(Tp::memFun(this, &Connection::authorizePublication));
-    //mContactListInterface->setRemoveContactsCallback(Tp::memFun(this, &Connection::removeContacts));
-    //mContactListInterface->setUnsubscribeCallback(Tp::memFun(this, &Connection::unsubscribe));
-    //mContactListInterface->setUnpublishCallback(Tp::memFun(this, &Connection::unpublish));
-    plugInterface(Tp::AbstractConnectionInterfacePtr::dynamicCast(mContactListInterface));
+   /* Connection.Interface.ContactList */
+   mContactListInterface = Tp::BaseConnectionContactListInterface::create();
+   mContactListInterface->setContactListPersists(true);
+   mContactListInterface->setCanChangeContactList(true);
+   mContactListInterface->setDownloadAtConnection(true);
+   mContactListInterface->setGetContactListAttributesCallback(Tp::memFun(this, &Connection::getContactListAttributes));
+   mContactListInterface->setRequestSubscriptionCallback(Tp::memFun(this, &Connection::requestSubscription));
+   // mContactListInterface->setAuthorizePublicationCallback(Tp::memFun(this, &Connection::authorizePublication));
+   mContactListInterface->setRemoveContactsCallback(Tp::memFun(this, &Connection::removeContacts));
+   //mContactListInterface->setUnsubscribeCallback(Tp::memFun(this, &Connection::unsubscribe));
+   //mContactListInterface->setUnpublishCallback(Tp::memFun(this, &Connection::unpublish));
+   plugInterface(Tp::AbstractConnectionInterfacePtr::dynamicCast(mContactListInterface));
 
+   /* Connection.Interface.Aliasing */
+   mAliasingInterface = Tp::BaseConnectionAliasingInterface::create();
+   mAliasingInterface->setGetAliasesCallback(Tp::memFun(this, &Connection::getAliases));
+   mAliasingInterface->setSetAliasesCallback(Tp::memFun(this, &Connection::setAliases));
+   plugInterface(Tp::AbstractConnectionInterfacePtr::dynamicCast(mAliasingInterface));
+    
    /* Connection.Interface.Requests */
    mRequestsInterface = Tp::BaseConnectionRequestsInterface::create(this);
    /* Fill requestableChannelClasses */
@@ -145,6 +153,186 @@ tr::Connection::Connection(const QDBusConnection &dbusConnection, const QString 
 }
 
 void
+tr::Connection::getContactsFromFile(Tp::DBusError *error)
+{
+   if (error->isValid())
+   {
+      return;
+   }
+
+   QFile file(c_fileWithContacts);
+
+   if ( file.open(QFile::ReadOnly) )
+   {
+      QTextStream in(&file);
+      QString line = in.readLine();
+      Tp::AliasMap aliases;
+      while ( !line.isNull() )
+      {
+	 uint handle = ensureHandle(line.split(" ").at(0));
+	 aliases[handle] = line.split(" ").at(1);
+	 line = in.readLine();
+      }
+      setAliases(aliases, error);
+   }
+   
+   else
+   {
+      file.open(QFile::WriteOnly);
+   }
+
+   mContactListInterface->setContactListState(Tp::ContactListStateSuccess);
+}
+
+void
+tr::Connection::setContactsInFile()
+{
+   QFile file(c_fileWithContacts);
+   
+   if( file.open(QIODevice::ReadWrite | QIODevice::Truncate) )
+   {
+      QTextStream stream(&file);
+      QMap<uint, QString>::iterator it;
+      for ( it = mHandles.begin(); it != mHandles.end(); it++ )
+      {
+	 if ( it.key() != selfHandle() )
+	 {
+	    stream << it.value() << " " << mAliases[it.key()] << endl;
+	 }
+      }
+      file.close();
+   }
+   
+   else
+   {
+      ErrLog(<<"couldn't write contacts to file" << endl);
+   }
+}
+
+Tp::AliasMap
+tr::Connection::getAliases(const Tp::UIntList& handles, Tp::DBusError *error)
+{
+   if ( error->isValid() )
+   {
+      return Tp::AliasMap();
+   }
+
+   qDebug() << Q_FUNC_INFO << handles;
+
+   Tp::AliasMap aliases;
+   Q_FOREACH ( uint handle, handles )
+   {
+      if ( mAliases.find(handle) == mAliases.end() )
+      {
+	 error->set(TP_QT_ERROR_INVALID_HANDLE, QLatin1String("Invalid handle(s)"));
+      }
+      aliases[handle] = mAliases[handle];
+   }
+
+   return aliases;
+}
+
+void
+tr::Connection::setAliases(const Tp::AliasMap &aliases, Tp::DBusError *error)
+{
+   if ( error->isValid() )
+   {
+      return;
+   }
+   
+   qDebug() << Q_FUNC_INFO << aliases;
+   
+   for ( Tp::AliasMap::const_iterator it = aliases.begin(); it != aliases.end(); it++ )
+   {
+      mAliases[it.key()] = it.value();
+   }
+   
+}
+
+void
+tr::Connection::deleteContacts(const QStringList& contacts)
+{
+
+   Tp::ContactSubscriptionMap changes;
+   Tp::HandleIdentifierMap identifiers;
+   Tp::HandleIdentifierMap removals;
+   Q_FOREACH ( const QString &contact, contacts )
+   {
+      uint id = mIdentifiers[contact];
+      removals[id] = contact;
+   }
+   mContactListInterface->contactsChangedWithID(changes, identifiers, removals);
+
+   setContactsInFile();
+}
+
+Tp::ContactAttributesMap
+tr::Connection::getContactListAttributes(const QStringList &interfaces, bool hold, Tp::DBusError *error)
+{
+   Tp::UIntList handles = mHandles.keys();
+   handles.removeOne(selfHandle());
+
+   StackLog(<<"getContactListAttributes()");
+   qDebug() << handles;
+
+   return getContactAttributes(handles, interfaces, error);
+}
+
+void
+tr::Connection::requestSubscription(const Tp::UIntList &handles, const QString &message, Tp::DBusError *error)
+{
+
+   QStringList contacts = inspectHandles(Tp::HandleTypeContact, handles, error);
+
+   if ( error->isValid() )
+   {
+      return;
+   }
+
+   if ( contacts.isEmpty() )
+   {
+      error->set(TP_QT_ERROR_INVALID_HANDLE, QLatin1String("Invalid handle(s)"));
+   }
+
+   Tp::ContactSubscriptionMap changes;
+   Tp::HandleIdentifierMap identifiers;
+   Tp::HandleIdentifierMap removals;
+   Q_FOREACH ( const QString &contact, contacts )
+   {
+      uint handle = ensureHandle(contact);
+
+      Tp::ContactSubscriptions change;
+      change.publish = Tp::SubscriptionStateYes;
+      change.publishRequest = QString();
+      change.subscribe = Tp::SubscriptionStateUnknown;
+
+      changes[handle] = change;
+      identifiers[handle] = contact;
+   }
+   mContactListInterface->contactsChangedWithID(changes, identifiers, removals);
+    
+   setContactsInFile();
+}
+
+void
+tr::Connection::removeContacts(const Tp::UIntList &handles, Tp::DBusError *error)
+{
+   QStringList contacts = inspectHandles(Tp::HandleTypeContact, handles, error);
+
+   if ( error->isValid() )
+   {
+      return;
+   }
+
+   if ( contacts.isEmpty() )
+   {
+      error->set(TP_QT_ERROR_INVALID_HANDLE, QLatin1String("Invalid handle(s)"));
+   }
+
+   deleteContacts(contacts);
+}
+
+void
 tr::Connection::doConnect(Tp::DBusError *error)
 {
    setStatus(Tp::ConnectionStatusConnecting, Tp::ConnectionStatusReasonRequested);
@@ -153,8 +341,11 @@ tr::Connection::doConnect(Tp::DBusError *error)
    ua->startup();
    myConversationManager->startup();
    ua->run();
+   statusMap = tr::Common::getSimpleStatusSpecMap();
 
    mContactListInterface->setContactListState(Tp::ContactListStateWaiting);
+
+   getContactsFromFile(error);
 }
 
 void
@@ -163,19 +354,59 @@ tr::Connection::onConnected()
    setStatus(Tp::ConnectionStatusConnected, Tp::ConnectionStatusReasonRequested);
 
    Tp::SimpleContactPresences presences;
-   mSelfPresence.type = Tp::ConnectionPresenceTypeAvailable;
-   mSelfPresence.status = QLatin1String("available");
+   Tp::DBusError error;
+   setPresence(QLatin1String("available"), QLatin1String(""), &error);
+
    presences[selfHandle()] = mSelfPresence;
+   // TODO: get presence from contacts
    mSimplePresenceInterface->setPresences(presences);
 }
 
 uint
 tr::Connection::setPresence(const QString &status, const QString &message, Tp::DBusError *error)
 {
-   //FIXME
+   // TODO: find out why message is always getting here empty
+
+   StackLog(<<"setPresence()");
+
+   mSelfPresence.type = statusMap[status].type;
+   mSelfPresence.status = status;
+   if ( statusMap[status].canHaveMessage )
+   {
+      mSelfPresence.statusMessage = message;
+   }
+
+   qDebug() << "status = " << mSelfPresence.status << " type = " << mSelfPresence.type << " message = " << message;
+
    return selfHandle();
 }
 
+Tp::SimpleContactPresences
+tr::Connection::getPresences(const Tp::UIntList &handles)
+{
+   StackLog(<<"getPresences()");
+
+   Tp::SimpleContactPresences presences;
+   Q_FOREACH ( uint handle, handles )
+   {
+      presences[handle] = getPresence(handle);
+   }
+
+   return presences;
+}
+
+Tp::SimplePresence
+tr::Connection::getPresence(uint handle)
+{
+   StackLog(<<"getPresence()");
+   if ( !mPresences.contains(handle) )
+   {
+      return Tp::SimplePresence();
+   }
+   qDebug() << "presence = " << mPresences.value(handle).status;
+
+   return mPresences.value(handle);
+}
 
 void
 tr::Connection::doDisconnect()
@@ -195,7 +426,8 @@ tr::Connection::setStatusSlot(uint newStatus, uint reason)
 uint
 tr::Connection::ensureHandle(const QString& identifier)
 {
-   if(!mIdentifiers.contains(identifier)) {
+   if ( !mIdentifiers.contains(identifier) )
+   {
       long id = nextHandleId++;
       mHandles[id] = identifier;
       mIdentifiers[identifier] = id;
@@ -223,9 +455,10 @@ tr::Connection::onIncomingCall(const QString & caller, uint callHandle)
    Tp::DBusError error;
    Tp::BaseChannelPtr channel = ensureChannel(request, yours, false, &error);
 
-   if (error.isValid() || channel.isNull()) {
-       qWarning() << "error creating the channel " << error.name() << error.message();
-       return;
+   if ( error.isValid() || channel.isNull() )
+   {
+      qWarning() << "error creating the channel " << error.name() << error.message();
+      return;
    }
 }
 
@@ -234,16 +467,19 @@ tr::Connection::inspectHandles(uint handleType, const Tp::UIntList &handles, Tp:
 {
    StackLog(<<"inspectHandles()");
 
-   if(handleType != Tp::HandleTypeContact) {
+   if ( handleType != Tp::HandleTypeContact )
+   {
       error->set(TP_QT_ERROR_INVALID_ARGUMENT, QLatin1String("Unsupported handle type"));
       return QStringList();
    }
 
    QStringList result;
 
-   foreach (uint handle, handles) {
-      if(!mHandles.contains(handle)) {
-         return QStringList();
+   Q_FOREACH ( uint handle, handles )
+   {
+      if ( !mHandles.contains(handle) )
+      {
+	 return QStringList();
       }
 
       result.append(mHandles.value(handle));
@@ -257,15 +493,16 @@ tr::Connection::requestHandles(uint handleType, const QStringList &identifiers, 
    DebugLog(<<"requestHandles() ");
    Tp::UIntList result;
 
-   if(handleType != Tp::HandleTypeContact) {
+   if ( handleType != Tp::HandleTypeContact )
+   {
       ErrLog(<<"requestHandles() unsupported handleType == " << handleType);
       error->set(TP_QT_ERROR_INVALID_ARGUMENT, QLatin1String("Connection::requestHandles - Handle Type unknown"));
       return result;
    }
 
-   Q_FOREACH(const QString &identifier,  identifiers) {
-      ensureHandle(identifier);     
-      result.append(mIdentifiers[identifier]);
+   Q_FOREACH ( const QString &identifier,  identifiers )
+   {
+      result.append(ensureHandle(identifier));
    }
 
    return result;
@@ -281,27 +518,40 @@ tr::Connection::createChannel(const QVariantMap &request, Tp::DBusError *error)
    uint targetHandle = 0;
    QString targetID;
 
-   switch (targetHandleType) {
-   case Tp::HandleTypeContact:
-      if (request.contains(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetHandle"))) {
-         targetHandle = request.value(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetHandle")).toUInt();
-         targetID = mHandles[targetHandle];
-      } else if (request.contains(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetID"))) {
-         targetID = request.value(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetID")).toString();
-         targetHandle = ensureHandle(targetID);
+   switch ( targetHandleType )
+   {
+      case Tp::HandleTypeContact:
+      {
+	 if ( request.contains(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetHandle")) )
+	 {
+            targetHandle = request.value(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetHandle")).toUInt();
+            targetID = mHandles[targetHandle];
+	 }
+
+	 else if ( request.contains(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetID")) )
+	 {
+            targetID = request.value(TP_QT_IFACE_CHANNEL + QLatin1String(".TargetID")).toString();
+            targetHandle = ensureHandle(targetID);
+	 }
+	 break;
       }
-      break;
-   default:
-      if (error) {
-         error->set(TP_QT_ERROR_INVALID_ARGUMENT, QLatin1String("Unknown target handle type"));
+      
+      default:
+      {
+	 if ( error )
+	 {
+            error->set(TP_QT_ERROR_INVALID_ARGUMENT, QLatin1String("Unknown target handle type"));
+	 }
+	 return Tp::BaseChannelPtr();
+	 break;
       }
-      return Tp::BaseChannelPtr();
-      break;
    }
 
-   if (targetID.isEmpty()) {
-      if (error) {
-         error->set(TP_QT_ERROR_INVALID_HANDLE, QLatin1String("Target handle is empty."));
+   if ( targetID.isEmpty() )
+   {
+      if ( error )
+      {
+	 error->set(TP_QT_ERROR_INVALID_HANDLE, QLatin1String("Target handle is empty."));
       }
       return Tp::BaseChannelPtr();
    }
@@ -309,30 +559,32 @@ tr::Connection::createChannel(const QVariantMap &request, Tp::DBusError *error)
    uint initiatorHandle = request.value(TP_QT_IFACE_CHANNEL + QLatin1String(".InitiatorHandle")).toUInt();
 
    /*Tp::BaseChannelPtr baseChannel = Tp::BaseChannel::create(this, channelType, Tp::HandleType(targetHandleType), targetHandle);
-   baseChannel->setTargetID(targetID);
-   baseChannel->setInitiatorHandle(initiatorHandle); */
+     baseChannel->setTargetID(targetID);
+     baseChannel->setInitiatorHandle(initiatorHandle); */
 
    ParticipantHandle participantHandle = -1;
    bool incoming = false;
    StackLog(<<"createChannel - channelType = " << channelType.toUtf8().constData() << " and contact = " << targetID.toUtf8().constData());
-   if(channelType == TP_QT_IFACE_CHANNEL_TYPE_CALL) {
+   if ( channelType == TP_QT_IFACE_CHANNEL_TYPE_CALL )
+   {
       recon::ConversationHandle cHandle = 1;   // FIXME - hardcoded default value, should create new Conversation
       //recon::ConversationHandle cHandle = myConversationManager->createConversation();
       //myConversationManager->createLocalParticipant();
-      if(!request.contains("participantHandle"))
+      if ( !request.contains("participantHandle") )
       {
-         // Outgoing call
-         DebugLog(<<"outoing call");
-         NameAddr callee(targetID.toUtf8().constData());
-         participantHandle = myConversationManager->createRemoteParticipant(cHandle, callee);
-         myConversationManager->addParticipant(cHandle, participantHandle);
+	 // Outgoing call
+	 DebugLog(<<"outoing call");
+	 NameAddr callee(targetID.toUtf8().constData());
+	 participantHandle = myConversationManager->createRemoteParticipant(cHandle, callee);
+	 myConversationManager->addParticipant(cHandle, participantHandle);
       }
+      
       else
       {
-         // Incoming call
-         DebugLog(<<"incoming call");
-         incoming = true;
-         participantHandle = (ParticipantHandle)request["participantHandle"].toUInt();
+	 // Incoming call
+	 DebugLog(<<"incoming call");
+	 incoming = true;
+	 participantHandle = (ParticipantHandle)request["participantHandle"].toUInt();
       }
    }
 
@@ -346,23 +598,35 @@ tr::Connection::createChannel(const QVariantMap &request, Tp::DBusError *error)
 Tp::ContactAttributesMap
 tr::Connection::getContactAttributes(const Tp::UIntList &handles, const QStringList &ifaces, Tp::DBusError *error)
 {
-    StackLog(<<"getContactAttributes");
-    qDebug() << "getContactAttributes" << handles << ifaces;
-    Tp::ContactAttributesMap attributesMap;
-    Q_FOREACH(uint handle, handles) {
-        QVariantMap attributes;
-        QStringList inspectedHandles = inspectHandles(Tp::HandleTypeContact, Tp::UIntList() << handle, error);
-        if (inspectedHandles.size() > 0) {
-            attributes[TP_QT_IFACE_CONNECTION+"/contact-id"] = inspectedHandles.at(0);
-        } else {
-            continue;
-        }
-        if (ifaces.contains(TP_QT_IFACE_CONNECTION_INTERFACE_SIMPLE_PRESENCE)) {
-            attributes[TP_QT_IFACE_CONNECTION_INTERFACE_SIMPLE_PRESENCE+"/presence"] = QVariant::fromValue(mSelfPresence);
-        }
-        attributesMap[handle] = attributes;
-    }
-    return attributesMap;
+   StackLog(<<"getContactAttributes");
+   Tp::ContactAttributesMap attributesMap;
+   Q_FOREACH ( uint handle, handles )
+   {
+      QVariantMap attributes;
+      QStringList inspectedHandle = inspectHandles(Tp::HandleTypeContact, Tp::UIntList() << handle, error);
+      if ( inspectedHandle.size() > 0 )
+      {
+	 attributes[TP_QT_IFACE_CONNECTION+"/contact-id"] = inspectedHandle.at(0);
+      }
+
+      else
+      {
+	 continue;
+      }
+      qDebug() << "handle = " << handle << " inspectedHandle = " << inspectedHandle;
+
+      if ( ifaces.contains(TP_QT_IFACE_CONNECTION_INTERFACE_SIMPLE_PRESENCE) )
+      {
+	 attributes[TP_QT_IFACE_CONNECTION_INTERFACE_SIMPLE_PRESENCE+"/presence"] = QVariant::fromValue(getPresence(handle));
+      }
+
+      if ( ifaces.contains(TP_QT_IFACE_CONNECTION_INTERFACE_ALIASING) )
+      {
+	 attributes[TP_QT_IFACE_CONNECTION_INTERFACE_ALIASING + QLatin1String("/alias")] = QVariant::fromValue(mAliases[handle]);
+      }
+
+      attributesMap[handle] = attributes;
+   }
+
+   return attributesMap;
 }
-
-
