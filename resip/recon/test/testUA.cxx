@@ -253,6 +253,21 @@ public:
       InfoLog(<< "onParticipantRedirectFailure: handle=" << partHandle << " statusCode=" << statusCode);
    }
 
+   virtual void onMessageArrived(ServerPagerMessageHandle handle, const SipMessage& message)
+   {
+      InfoLog(<< "onMessageArrived: message=" << message.brief());
+   }
+
+   virtual void onSuccess(ClientPagerMessageHandle handle, const SipMessage& status)
+   {
+      InfoLog(<< "onSuccess: message=" << status.brief());
+   }
+
+   virtual void onFailure(ClientPagerMessageHandle handle, const SipMessage& status, std::auto_ptr<Contents> contents)
+   {
+      InfoLog(<< "onSuccess: message=" << status.brief() << " contents=" << *contents);
+   }
+
    void displayInfo()
    {
       Data output;

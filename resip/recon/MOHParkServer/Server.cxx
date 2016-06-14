@@ -646,6 +646,24 @@ Server::onMaxParkTimeout(recon::ParticipantHandle participantHandle)
    }
 }
 
+void
+Server::onMessageArrived(resip::ServerPagerMessageHandle handle, const resip::SipMessage& message)
+{
+   InfoLog(<< "onMessageArrived: message=" << message.brief());
+}
+
+void
+Server::onSuccess(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status)
+{
+   InfoLog(<< "onSuccess: status=" << status.brief());
+}
+
+void
+Server::onFailure(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status, std::auto_ptr<resip::Contents> contents)
+{
+   InfoLog(<< "onFailure: status=" << status.brief());
+}
+
 }
 
 /* ====================================================================

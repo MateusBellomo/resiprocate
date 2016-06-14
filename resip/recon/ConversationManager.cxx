@@ -21,6 +21,9 @@
 #include <resip/dum/ServerInviteSession.hxx>
 #include <resip/dum/ClientSubscription.hxx>
 #include <resip/dum/ServerOutOfDialogReq.hxx>
+#include <resip/dum/ClientPagerMessage.hxx>
+#include <resip/dum/ServerPagerMessage.hxx>
+#include <resip/stack/PlainContents.hxx>
 
 #include "ReconSubsystem.hxx"
 #include "UserAgent.hxx"
@@ -1223,6 +1226,30 @@ ConversationManager::onTryingNextTarget(AppDialogSetHandle, const SipMessage& ms
    return true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Pager Handler ///////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+const char*
+ConversationManager::sendMessage(const NameAddr& destination, const Data& msg, const Mime& mimeType)
+{
+   if(!mUserAgent->mDum.getMasterProfile()->isMethodSupported(MESSAGE))
+   {
+      mUserAgent->mDum.getMasterProfile()->addSupportedMethod(MESSAGE);
+   }
+   if(!mUserAgent->mDum.getMasterProfile()->isMimeTypeSupported(MESSAGE, mimeType))
+   {
+      mUserAgent->mDum.getMasterProfile()->addSupportedMimeType(MESSAGE, mimeType);
+   }
+   
+   ClientPagerMessageHandle cpmh = mUserAgent->mDum.makePagerMessage(destination);
+   auto_ptr<Contents> msgContent(new PlainContents(msg));
+   cpmh.get()->page(msgContent);
+   SharedPtr<SipMessage> sipMessage = cpmh.get()->getMessageRequestSharedPtr();
+   mUserAgent->mDum.send(sipMessage);
+
+   return sipMessage->header(h_CallId).value().c_str();
+}
 
 /* ====================================================================
 

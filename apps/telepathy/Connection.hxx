@@ -36,6 +36,8 @@
 #include "MyConversationManager.hxx"
 #include "MyUserAgent.hxx"
 
+using namespace recon;
+using namespace resip;
 
 namespace tr {
 
@@ -51,6 +53,17 @@ public:
             const QVariantMap &parameters);
 
    MyConversationManager& getConversationManager() { return *myConversationManager.get(); };
+   Tp::ContactAttributesMap getContactListAttributes(const QStringList &interfaces, bool hold, Tp::DBusError *error);
+   void requestSubscription(const Tp::UIntList &handles, const QString &message, Tp::DBusError *error);
+   void removeContacts(const Tp::UIntList &handles, Tp::DBusError *error);
+   Tp::AliasMap getAliases(const Tp::UIntList& handles, Tp::DBusError *error);
+   void setAliases(const Tp::AliasMap &aliases, Tp::DBusError *error);
+   void getContactsFromFile(Tp::DBusError *error);
+   void setContactsInFile();
+   void deleteContacts(const QStringList& contacts);
+   Tp::SimpleStatusSpecMap getSimpleStatusSpecMap();
+   Tp::SimpleContactPresences getPresences(const Tp::UIntList &handles);
+   Tp::SimplePresence getPresence(uint handle);
 
 private:
    uint setPresence(const QString &status, const QString &message, Tp::DBusError *error);
@@ -60,7 +73,8 @@ private:
    Tp::ContactAttributesMap getContactAttributes(const Tp::UIntList &handles, const QStringList &ifaces, Tp::DBusError *error);
    uint ensureHandle(const QString& identifier);
 
-
+   // QString ensureStatus(const QString& tpStatus);
+					   
 private slots:
    void doConnect(Tp::DBusError *error);
    void onConnected();
@@ -68,6 +82,8 @@ private slots:
    void setStatusSlot(uint newStatus, uint reason);
    void onIncomingCall(const QString & caller, uint callHandle);
 
+   void setContactStatus(const QString& identifier, const QString& status);
+   void onMessageReceived(const resip::SipMessage& message);
 
 private:
    resip::SharedPtr<TelepathyMasterProfile> mUAProfile;
@@ -76,6 +92,7 @@ private:
    std::auto_ptr<MyConversationManager> myConversationManager;
 
    Tp::BaseConnectionContactsInterfacePtr mContactsInterface;
+   Tp::BaseConnectionAliasingInterfacePtr mAliasingInterface;
    Tp::BaseConnectionSimplePresenceInterfacePtr mSimplePresenceInterface;
    Tp::BaseConnectionContactListInterfacePtr mContactListInterface;
    Tp::BaseConnectionRequestsInterfacePtr mRequestsInterface;
@@ -83,10 +100,15 @@ private:
    long nextHandleId;
    QMap<uint, QString> mHandles;
    QMap<QString, uint> mIdentifiers;
+   Tp::AliasMap mAliases;
 
    Tp::SimplePresence mSelfPresence;
-};
+   Tp::SimpleStatusSpecMap statusMap;
+   Tp::SimpleContactPresences mPresences;
 
+   // QMap<QString, QString> mTpStatus;
+   // QMap<QString, QString> mResipStatus;
+};
 }
 
 #endif

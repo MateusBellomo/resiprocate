@@ -11,6 +11,7 @@
 #include <resip/dum/SubscriptionHandler.hxx>
 #include <resip/dum/OutOfDialogHandler.hxx>
 #include <resip/dum/RedirectHandler.hxx>
+#include <resip/dum/PagerMessageHandler.hxx>
 #include <rutil/Mutex.hxx>
 #include <rutil/SharedPtr.hxx>
 
@@ -35,7 +36,6 @@ class Participant;
 class UserAgent;
 class ConversationProfile;
 class RemoteParticipant;
-
 
 /**
   This class is one of two main classes of concern to an application
@@ -62,6 +62,8 @@ class ConversationManager  : public resip::InviteSessionHandler,
                              public resip::OutOfDialogHandler,
                              public resip::ClientSubscriptionHandler,
                              public resip::ServerSubscriptionHandler,
+                             public resip::ServerPagerMessageHandler,
+                             public resip::ClientPagerMessageHandler,
                              public resip::RedirectHandler
 {
 public:  
@@ -482,6 +484,18 @@ public:
    */
    virtual void onDtmfEvent(ParticipantHandle partHandle, int dtmf, int duration, bool up) = 0;
 
+   ///////////////////////////////////////////////////////////////////////
+   // Pager Message Handlers /////////////////////////////////////////////
+   ///////////////////////////////////////////////////////////////////////
+
+   virtual void onMessageArrived(resip::ServerPagerMessageHandle handle, const resip::SipMessage& message) = 0;
+   // Called when a MESSAGE has been successfully sent
+   virtual void onSuccess(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status) = 0;
+   // Application could re-page the failed contents or just ingore it.
+   virtual void onFailure(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status, std::auto_ptr<resip::Contents> contents) = 0;
+   
+   const char* sendMessage(const resip::NameAddr& destination, const resip::Data& msg, const resip::Mime& mimeType);
+   
    ///////////////////////////////////////////////////////////////////////
    // Media Related Methods - this may not be the right spot for these - move to LocalParticipant?
    ///////////////////////////////////////////////////////////////////////

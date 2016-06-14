@@ -71,7 +71,8 @@ public:
       EncodeStream& encode(EncodeStream& str, Data indent) const;
    };
    const NodeList& getRootNodes() const { checkParsed(); return mRootNodes; }
-
+   void setRootNodes(const NodeList& nodeList);
+   
    // Helpers for users of this class
    static const Data& getSubNodeValue(Node* node, const Data& tag);
    static Data generateNowTimestampData();

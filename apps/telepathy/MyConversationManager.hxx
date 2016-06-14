@@ -65,6 +65,12 @@ public:
    virtual void onParticipantRedirectSuccess(recon::ParticipantHandle partHandle);
    virtual void onParticipantRedirectFailure(recon::ParticipantHandle partHandle, unsigned int statusCode);
    virtual void displayInfo();
+   virtual void onMessageArrived(resip::ServerPagerMessageHandle handle, const resip::SipMessage& message);
+   virtual void onSuccess(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status);
+   virtual void onFailure(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status, std::auto_ptr<resip::Contents> contents);
+
+signals:
+   void onMessageReceived(const resip::SipMessage& message);
 
 protected:
    std::list<recon::ConversationHandle> mConversationHandles;

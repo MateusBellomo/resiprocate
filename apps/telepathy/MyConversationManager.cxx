@@ -24,6 +24,8 @@
 #include <rutil/Log.hxx>
 #include <rutil/Logger.hxx>
 #include <resip/recon/ReconSubsystem.hxx>
+#include <resip/dum/ClientPagerMessage.hxx>
+#include <resip/dum/ServerPagerMessage.hxx>
 
 // Test Prompts for cache testing
 #include "playback_prompt.h"
@@ -267,3 +269,25 @@ MyConversationManager::displayInfo()
    }
 }
 
+void
+MyConversationManager::onMessageArrived(resip::ServerPagerMessageHandle handle, const SipMessage& message)
+{
+   SharedPtr<SipMessage> ok = handle->accept();
+   handle->send(ok);
+   InfoLog(<<"MyConversationManager::onMessageArrived " << message.brief());
+   emit onMessageReceived(message);
+}
+
+void
+MyConversationManager::onSuccess(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status)
+{
+   InfoLog(<<"ClientMessageHandler::onSuccess\n");
+}
+
+void
+MyConversationManager::onFailure(resip::ClientPagerMessageHandle handle, const resip::SipMessage& status, std::auto_ptr<resip::Contents> contents)
+{
+   ErrLog(<<"ClientMessageHandler::onFailure\n");
+   
+   ErrLog(<< "Message rcv: "  << *contents << "\n");
+}

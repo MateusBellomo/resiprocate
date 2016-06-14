@@ -23,6 +23,7 @@
 #endif
 
 #include <resip/recon/UserAgent.hxx>
+#include <resip/stack/Pidf.hxx>
 
 #include "Connection.hxx"
 
@@ -45,6 +46,12 @@ public:
    virtual void thread();
    virtual void setStatus(uint newStatus, uint reason);
    virtual void stop();
+   
+private:
+   std::vector<resip::Pidf::Tuple> getTuplesFromXML(const resip::Data& notifyData);
+   
+signals:
+   void setContactStatus(const QString& identifier, const QString& status);
 
 private:
    tr::Connection& mConnection;
