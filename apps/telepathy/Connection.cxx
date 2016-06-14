@@ -23,12 +23,12 @@
 #include <resip/recon/UserAgent.hxx>
 #include <resip/recon/ReconSubsystem.hxx>
 
-
 #include "MyConversationManager.hxx"
 
 #include "Connection.hxx"
 #include "Common.hxx"
 #include "SipCallChannel.hxx"
+#include "TextChannel.hxx"
 
 using namespace recon;
 using namespace resip;
@@ -43,7 +43,8 @@ tr::Connection::Connection(const QDBusConnection &dbusConnection, const QString 
      mUAProfile(new TelepathyMasterProfile(parameters)),
      mConversationProfile(new TelepathyConversationProfile(mUAProfile, parameters)),
      ua(0),
-     nextHandleId(1)
+     nextHandleId(1),
+     mParameters(parameters)
 {
    std::vector<unsigned int> _codecIds;
    _codecIds.push_back(SdpCodec::SDP_CODEC_G722);           // 9 - G.722
@@ -409,6 +410,44 @@ tr::Connection::getPresence(uint handle)
 }
 
 void
+tr::Connection::onMessageReceived(const SipMessage& message)
+{
+   const NameAddr& to = message.header(h_To);
+   const NameAddr& from = message.header(h_From);
+
+   uint targetHandle = ensureHandle(to.displayName().c_str());
+   uint initiatorHandle = ensureHandle(from.displayName().c_str());
+
+   qDebug() << "onMessageReceived() " << to.displayName().c_str() << " " << from.displayName().c_str() << endl;
+   
+   QVariantMap request;
+   request[TP_QT_IFACE_CHANNEL + QLatin1String(".ChannelType")] = TP_QT_IFACE_CHANNEL_TYPE_TEXT;
+   request[TP_QT_IFACE_CHANNEL + QLatin1String(".TargetHandle")] = targetHandle;
+   request[TP_QT_IFACE_CHANNEL + QLatin1String(".TargetHandleType")] = Tp::HandleTypeContact;
+   request[TP_QT_IFACE_CHANNEL + QLatin1String(".InitiatorHandle")] = initiatorHandle;
+   
+   bool yours;
+   Tp::DBusError error;
+   Tp::BaseChannelPtr channel = ensureChannel(request, yours, false, &error);
+
+   if ( error.isValid() || channel.isNull() )
+   {
+      qWarning() << "error creating the channel " << error.name() << error.message();
+      return;
+   }
+
+   TextChannelPtr textChannel = TextChannelPtr::dynamicCast(channel->interface(TP_QT_IFACE_CHANNEL_TYPE_TEXT));
+
+   if ( !textChannel )
+   {
+      qDebug() << Q_FUNC_INFO << "Error, not a text channel";
+      return;
+   }
+
+   textChannel->onMessageReceived(message, initiatorHandle);
+}
+
+void
 tr::Connection::doDisconnect()
 {
    InfoLog(<<"doDisconnect()");
@@ -558,9 +597,9 @@ tr::Connection::createChannel(const QVariantMap &request, Tp::DBusError *error)
 
    uint initiatorHandle = request.value(TP_QT_IFACE_CHANNEL + QLatin1String(".InitiatorHandle")).toUInt();
 
-   /*Tp::BaseChannelPtr baseChannel = Tp::BaseChannel::create(this, channelType, Tp::HandleType(targetHandleType), targetHandle);
-     baseChannel->setTargetID(targetID);
-     baseChannel->setInitiatorHandle(initiatorHandle); */
+   Tp::BaseChannelPtr baseChannel = Tp::BaseChannel::create(this, channelType, Tp::HandleType(targetHandleType), targetHandle);
+   baseChannel->setTargetID(targetID);
+   baseChannel->setInitiatorHandle(initiatorHandle);
 
    ParticipantHandle participantHandle = -1;
    bool incoming = false;
@@ -588,6 +627,15 @@ tr::Connection::createChannel(const QVariantMap &request, Tp::DBusError *error)
       }
    }
 
+   else if ( channelType == TP_QT_IFACE_CHANNEL_TYPE_TEXT )
+   {
+      if ( targetHandleType == Tp::HandleTypeContact )
+      {
+	 TextChannelPtr textChannel = tr::TextChannel::create(baseChannel.data(), mParameters, mHandles[selfHandle()]);
+	 baseChannel->plugInterface(Tp::AbstractChannelInterfacePtr::dynamicCast(textChannel));
+	 return baseChannel;
+      }
+   }
    //return baseChannel;
 
    SipCallChannel *channel = new SipCallChannel(incoming, this, targetID, targetHandle, participantHandle);

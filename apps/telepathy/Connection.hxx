@@ -36,12 +36,13 @@
 #include "MyConversationManager.hxx"
 #include "MyUserAgent.hxx"
 
+using namespace recon;
+using namespace resip;
 
 namespace tr {
 
    class MyConversationManager;
    class MyUserAgent;
-
    class Connection : public Tp::BaseConnection
    {
       Q_OBJECT
@@ -81,7 +82,7 @@ namespace tr {
       void doDisconnect();
       void setStatusSlot(uint newStatus, uint reason);
       void onIncomingCall(const QString & caller, uint callHandle);
-
+      void onMessageReceived(const SipMessage& message);
 
    private:
       resip::SharedPtr<TelepathyMasterProfile> mUAProfile;
@@ -99,7 +100,9 @@ namespace tr {
       QMap<uint, QString> mHandles;
       QMap<QString, uint> mIdentifiers;
       Tp::AliasMap mAliases;
-
+      QVariantMap mParameters;
+      
+      
       Tp::SimpleStatusSpecMap statusMap;
       Tp::SimplePresence mSelfPresence;
       Tp::SimpleContactPresences mPresences;
