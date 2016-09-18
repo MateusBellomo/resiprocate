@@ -112,6 +112,12 @@ BaseCreator::makeInitialRequest(const NameAddr& target, const NameAddr& from, Me
       // aren't allowed to include p_Instance in this case...  
       // odds are it will be useful (or necessary) for some implementations
       const Data& instanceId = mUserProfile->getInstanceId();
+      {
+	 DebugLog ( << "mbellomo " << std::endl << std::endl);
+	 contact.param(p_regid) = 1;
+	 // contact.param(p_Instance) = "6c6849c1-7e6b-4668-ad6f-aa6bdf5647c4";
+	 contact.param(p_Instance) = "<urn:uuid:8856ad7a-5bee-444f-8764-2d214e710a61>";
+      }
       if (!contact.uri().exists(p_gr) && !instanceId.empty())
       {
          contact.param(p_Instance) = instanceId;
@@ -128,6 +134,11 @@ BaseCreator::makeInitialRequest(const NameAddr& target, const NameAddr& from, Me
       }
    }
 
+   if(method == SUBSCRIBE)
+   {
+      mLastRequest->header(h_Accepts).push_back( Mime( "application","pidf+xml") );
+   }
+   
    if(mUserProfile->clientOutboundEnabled() && method != REGISTER)
    {
       // Add ;ob parm to non-register requests - RFC5626 pg17

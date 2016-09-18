@@ -102,6 +102,7 @@ TelepathyMasterProfile::TelepathyMasterProfile(const QVariantMap &parameters)
    addSupportedMimeType(NOTIFY, Mime("message", "sipfrag"));
    addSupportedMimeType(NOTIFY, Pidf::getStaticType());
    addSupportedMimeType(INFO, Mime("application", "dtmf-relay"));
+   addSupportedMimeType(SUBSCRIBE, Mime("application", "pidf+xml"));
 
    clearSupportedMethods();
    addSupportedMethod(INVITE);
