@@ -305,7 +305,7 @@ tr::Connection::requestSubscription(const Tp::UIntList &handles, const QString &
 {
 
    QStringList contacts = inspectHandles(Tp::HandleTypeContact, handles, error);
-
+   qDebug() << "requestSubscription() contacts = " << contacts;
    if ( error->isValid() )
    {
       return;
@@ -578,6 +578,29 @@ Tp::UIntList
 tr::Connection::requestHandles(uint handleType, const QStringList &identifiers, Tp::DBusError *error)
 {
    DebugLog(<<"requestHandles() ");
+   qDebug() << "requestHandles() identifiers = " << identifiers;
+   Q_FOREACH(const QString &identifier,  identifiers) {
+      string strIdentifier = identifier.toUtf8().constData();
+      string uri = "sip:" + strIdentifier;
+      Uri myUri = Uri(uri.c_str());
+      StackLog(<< endl << "user = " << myUri.user() << endl);
+      StackLog(<< endl << "host = " << myUri.host() << endl);
+      StackLog(<< endl << "scheme = " << myUri.scheme() << endl);
+      StackLog(<< endl << "scheme = " << myUri.port() << endl);
+      try
+      {
+	 Uri(uri.c_str());
+   	 StackLog(<< endl << "requestHandles() matched " << uri << endl);
+      }
+      catch(ParseException& e)
+      {
+   	 StackLog(<< endl << "returning from requestHandles() didnt match " << uri << endl);
+	 StackLog(<< e);
+	 
+   	 return Tp::UIntList();	 
+      }
+   }
+
    Tp::UIntList result;
 
    if(handleType != Tp::HandleTypeContact) {
